@@ -35,7 +35,7 @@ Anyway this is a new ticket for you.
 	* setup
 	* dev
 	* stage
-	* prod where prod environment will be used with main branch to deploy production workloads
+	* main (deploy to production environment)
 
 5. Map each branch name with its environment. eg branch_name: dev ----Maps To----> environment: dev
 
@@ -43,7 +43,7 @@ Anyway this is a new ticket for you.
 
 7. Collaborate with the data science team to come up with a robost pipeline to deploy the model into dev, stage and prod environment.
 
-8. Setup monitoring tools, logging for dev, stage and prod models.
+8. Setup monitoring tools, logging for dev, stage and main (deploy to production environment) models.
 
 9. Document your entire solution with detailed architectural diagrams.
 
