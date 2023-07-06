@@ -1,0 +1,253 @@
+on:
+  push:
+    branches:
+      - setup
+  pull_request:
+    branches:
+      - setup
+  workflow_dispatch:
+
+env:
+
+    # Define environment variables
+    ACTION: "none"
+    S3_VERSION: "Enabled"
+    AWS_REGION: "us-east-2"
+    S3_DATABASE_STORAGE: "database"
+    S3_DATALAKE_STORAGE: "datalake"
+    SECRETS_NAME: "sagemaker-secrets"
+    S3_DATAWAREHOUSE_STORAGE: "datawarehouse"
+    REPOSITORY_NAME: "${{ github.event.repository.name }}"
+    TERRAFORM_BACKEND_S3_BUCKET_NAME: "mlproject-terraform"
+    REPOSITORY_URL: "https://github.com/${{ github.repository }}"
+    AUTH_GITHUBACTION_WITH_AWS_IAM_ROLE_NAME: github-action-workflow
+    TERRAFORM_BACKEND_STATE_FILE_LOCK_DYANAMODB_TABLE: "terraform-state-lock-dynamodb"
+
+permissions:
+    id-token: write
+
+jobs:
+    SetupInfrastructure:
+      if: github.ref == 'refs/heads/setup'
+      runs-on: ubuntu-latest
+      environment:
+        name: setup
+
+      steps:
+
+        - id: "Checkout"
+          name: Checkout repo
+          uses: actions/checkout@v3
+
+        - id: GenerateTerraformProviderScript
+          name: Generate terraform provider script
+          run: |
+            echo '''
+            terraform {
+              required_providers {
+                aws = {
+                  source  = "hashicorp/aws"
+                  version = "~> 4.0"
+                }
+              } 
+              backend "s3" {
+                dynamodb_table = "${{ env.TERRAFORM_BACKEND_STATE_FILE_LOCK_DYANAMODB_TABLE }}"
+                bucket         = "${{ env.TERRAFORM_BACKEND_S3_BUCKET_NAME }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID }}"
+                key            = "setup/terraform.tfstate"
+                region         = "${{ env.AWS_REGION }}"
+              }
+            }
+            provider "aws" {
+              region = "${{ env.AWS_REGION }}"
+              #profile = ""
+            }
+            ''' >> setup/terraform1/providers.tf
+
+        - id: "Auth"
+          name: "Authenticate to aws using OIDC"
+          uses: aws-actions/configure-aws-credentials@v2
+          with:
+            role-to-assume: arn:aws:iam::${{ secrets.YOUR_AWS_ACCOUNT_ID }}:role/${{ env.AUTH_GITHUBACTION_WITH_AWS_IAM_ROLE_NAME }}
+            aws-region: ${{ env.AWS_REGION }}
+
+        - id: "DeployS3"
+          if: env.ACTION  == 'apply'
+          name: Deploy s3 bucket to be used for backend
+          run: |
+              echo "Start Creating s3 bucket: ${{ env.TERRAFORM_BACKEND_S3_BUCKET_NAME }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID}}"
+              aws s3api create-bucket \
+              --bucket "${{ env.TERRAFORM_BACKEND_S3_BUCKET_NAME }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID}}"
+            
+              # Enabling s3 version
+              aws s3api put-bucket-versioning \
+              --bucket "${{ env.TERRAFORM_BACKEND_S3_BUCKET_NAME }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID}}" \
+              --versioning-configuration Status=Enabled
+              echo "Finished creating s3 bucket ${{ env.TERRAFORM_BACKEND_S3_BUCKET_NAME }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID}}"
+
+        - id: "DeployDynamoDbTable"
+          if: env.ACTION == 'apply'
+          name: Deploy Dynamodb Table for state locking
+          run: |
+            echo "Start creating Dynamodb table ${{ env.TERRAFORM_BACKEND_STATE_FILE_LOCK_DYANAMODB_TABLE }}"
+            tables=$(aws dynamodb list-tables --output text)
+            if [[ $tables =~ (^|[[:space:]])"${{ env.TERRAFORM_BACKEND_STATE_FILE_LOCK_DYANAMODB_TABLE }}"($|[[:space:]]) ]]; then
+              echo "Table '${{ env.TERRAFORM_BACKEND_STATE_FILE_LOCK_DYANAMODB_TABLE }}' exists"
+            else
+              aws dynamodb create-table \
+              --table-name ${{ env.TERRAFORM_BACKEND_STATE_FILE_LOCK_DYANAMODB_TABLE }} \
+              --attribute-definitions AttributeName=LockID,AttributeType=S \
+              --key-schema AttributeName=LockID,KeyType=HASH \
+              --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5
+              echo "Done provisioning"
+            fi
+            echo "Finished creating Dynamodb table ${{ env.TERRAFORM_BACKEND_STATE_FILE_LOCK_DYANAMODB_TABLE }}"
+
+        - id: "TerraformDeploy"
+          if: env.ACTION == 'apply'
+          name: Deploy resources using terraform
+          run: |
+            terraform -chdir=setup/terraform1 init
+            terraform -chdir=setup/terraform1 fmt
+            terraform -chdir=setup/terraform1 validate
+      
+            terraform -chdir=setup/terraform1 plan \
+            -var='secrets={ "password" = "'${{ secrets.MY_GITHUB_TOKEN }}'", "username" = "'${{ secrets.MY_GITHUB_USERNAME }}'", "name" = "'${{ env.SECRETS_NAME }}'" }' \
+            -var='repository-details={ "repo-name" = "'${{ env.REPOSITORY_NAME }}'", "repo-url" = "'${{ env.REPOSITORY_URL }}'" }' \
+            -var="s3-version=${{ env.S3_VERSION }}" \
+            -var="s3-storage=[\"${{ env.S3_DATABASE_STORAGE }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID }}\", \"${{ env.S3_DATALAKE_STORAGE }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID }}\", \"${{ env.S3_DATAWAREHOUSE_STORAGE }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID }}\"]"
+      
+            terraform -chdir=setup/terraform1 apply -auto-approve -lock=false \
+            -var='secrets={ "password" = "'${{ secrets.MY_GITHUB_TOKEN }}'", "username" = "'${{ secrets.MY_GITHUB_USERNAME }}'", "name" = "'${{ env.SECRETS_NAME }}'" }' \
+            -var='repository-details={ "repo-name" = "'${{ env.REPOSITORY_NAME }}'", "repo-url" = "'${{ env.REPOSITORY_URL }}'" }' \
+            -var="s3-version=${{ env.S3_VERSION }}" \
+            -var="s3-storage=[\"${{ env.S3_DATABASE_STORAGE }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID }}\", \"${{ env.S3_DATALAKE_STORAGE }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID }}\", \"${{ env.S3_DATAWAREHOUSE_STORAGE }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID }}\"]"
+      
+            echo "Infrastructure deployed successfully."
+
+        - id: "TerraformDestroy"
+          if: env.ACTION == 'destroy'
+          name: Destroy resources using terraform
+          run: |
+            terraform -chdir=setup/terraform1 init
+            terraform -chdir=setup/terraform1 fmt
+            terraform -chdir=setup/terraform1 validate
+      
+            terraform -chdir=setup/terraform1 plan \
+            -var='secrets={ "password" = "'${{ secrets.MY_GITHUB_TOKEN }}'", "username" = "'${{ secrets.MY_GITHUB_USERNAME }}'", "name" = "'${{ env.SECRETS_NAME }}'" }' \
+            -var='repository-details={ "repo-name" = "'${{ env.REPOSITORY_NAME }}'", "repo-url" = "'${{ env.REPOSITORY_URL }}'" }' \
+            -var="s3-version=${{ env.S3_VERSION }}" \
+            -var="s3-storage=[\"${{ env.S3_DATABASE_STORAGE }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID }}\", \"${{ env.S3_DATALAKE_STORAGE }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID }}\", \"${{ env.S3_DATAWAREHOUSE_STORAGE }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID }}\"]"
+      
+            terraform -chdir=setup/terraform1 destroy -auto-approve -lock=false \
+            -var='secrets={ "password" = "'${{ secrets.MY_GITHUB_TOKEN }}'", "username" = "'${{ secrets.MY_GITHUB_USERNAME }}'", "name" = "'${{ env.SECRETS_NAME }}'" }' \
+            -var='repository-details={ "repo-name" = "'${{ env.REPOSITORY_NAME }}'", "repo-url" = "'${{ env.REPOSITORY_URL }}'" }' \
+            -var="s3-version=${{ env.S3_VERSION }}" \
+            -var="s3-storage=[\"${{ env.S3_DATABASE_STORAGE }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID }}\", \"${{ env.S3_DATALAKE_STORAGE }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID }}\", \"${{ env.S3_DATAWAREHOUSE_STORAGE }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID }}\"]"
+      
+            echo "Infrastructure destroyed successfully."
+  
+        - id: "DeleteDynamoDB"
+          if: env.ACTION == 'destroy'
+          name: Destroy Dynamodb Table for state locking
+          run: |
+            echo "Deleting DynamoDB table: ${{ env.TERRAFORM_BACKEND_STATE_FILE_LOCK_DYANAMODB_TABLE }}"
+            aws dynamodb delete-table --table-name "${{ env.TERRAFORM_BACKEND_STATE_FILE_LOCK_DYANAMODB_TABLE }}"
+            echo "DynamoDB table deletion completed successfully."
+
+        - id: "DeleteS3"
+          if: env.ACTION == 'destroy'
+          name: Destroy s3 bucket to be used for backend
+          run: |
+            echo "Start Deleting Storage Bucket"
+            versions=$(aws s3api list-object-versions --bucket "${{ env.TERRAFORM_BACKEND_S3_BUCKET_NAME }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID}}" --output json)
+            keys=$(echo "$versions" | grep -o '"Key": "[^"]*' | sed 's/"Key": "//')
+            versions=$(echo "$versions" | grep -o '"VersionId": "[^"]*' | sed 's/"VersionId": "//')
+            for key in $keys; do
+              for version in $versions; do
+                aws s3api delete-object --bucket "${{ env.TERRAFORM_BACKEND_S3_BUCKET_NAME }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID}}" --key "$key" --version-id "$version"
+              done
+            done  
+            aws s3 rb s3://"${{ env.TERRAFORM_BACKEND_S3_BUCKET_NAME }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID}}" --force
+            echo "Finished Deleting s3 bucket"
+          
+    pullRequest:
+      if: github.event_name == 'pull_request' && github.base_ref == 'setup'
+      runs-on: ubuntu-latest
+      steps:
+
+      - id: "Checkout"
+        name: Checkout repo
+        uses: actions/checkout@v3
+
+      - id: GenerateTerraformProviderScript
+        name: Generate terraform provider script
+        run: |
+          echo '''
+          terraform {
+            required_providers {
+              aws = {
+                source  = "hashicorp/aws"
+                version = "~> 4.0"
+              }
+            } 
+            backend "s3" {
+              dynamodb_table = "${{ env.TERRAFORM_BACKEND_STATE_FILE_LOCK_DYANAMODB_TABLE }}"
+              bucket         = "${{ env.TERRAFORM_BACKEND_S3_BUCKET_NAME }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID }}"
+              key            = "setup/terraform.tfstate"
+              region         = "${{ env.AWS_REGION }}"
+            }
+          }
+          provider "aws" {
+            region = "${{ env.AWS_REGION }}"
+            #profile = ""
+          }
+          ''' >> setup/terraform1/providers.tf
+
+      - id: "Auth"
+        name: "Authenticate to aws using OIDC"
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.YOUR_AWS_ACCOUNT_ID }}:role/${{ env.AUTH_GITHUBACTION_WITH_AWS_IAM_ROLE_NAME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - id: "DeployS3"
+        name: Deploy s3 bucket to be used for backend
+        run: |
+            echo "Start Creating s3 bucket: ${{ env.TERRAFORM_BACKEND_S3_BUCKET_NAME }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID}}"
+            aws s3api create-bucket \
+            --bucket "${{ env.TERRAFORM_BACKEND_S3_BUCKET_NAME }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID}}"
+            # Enabling s3 version
+            aws s3api put-bucket-versioning \
+            --bucket "${{ env.TERRAFORM_BACKEND_S3_BUCKET_NAME }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID}}" \
+            --versioning-configuration Status=Enabled
+            echo "Finished creating s3 bucket ${{ env.TERRAFORM_BACKEND_S3_BUCKET_NAME }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID}}"
+
+      - id: "DeployDynamoDbTable"
+        name: Deploy Dynamodb Table for state locking
+        run: |
+          echo "Start creating Dynamodb table ${{ env.TERRAFORM_BACKEND_STATE_FILE_LOCK_DYANAMODB_TABLE }}"
+          tables=$(aws dynamodb list-tables --output text)
+          if [[ $tables =~ (^|[[:space:]])"${{ env.TERRAFORM_BACKEND_STATE_FILE_LOCK_DYANAMODB_TABLE }}"($|[[:space:]]) ]]; then
+            echo "Table '${{ env.TERRAFORM_BACKEND_STATE_FILE_LOCK_DYANAMODB_TABLE }}' exists"
+          else
+            aws dynamodb create-table \
+            --table-name ${{ env.TERRAFORM_BACKEND_STATE_FILE_LOCK_DYANAMODB_TABLE }} \
+            --attribute-definitions AttributeName=LockID,AttributeType=S \
+            --key-schema AttributeName=LockID,KeyType=HASH \
+            --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5
+            echo "Done provisioning"
+          fi
+          echo "Finished creating Dynamodb table ${{ env.TERRAFORM_BACKEND_STATE_FILE_LOCK_DYANAMODB_TABLE }}"
+
+      - id: "TerraformPlan"
+        name: Plan resources using terraform
+        run: |
+          terraform -chdir=setup/terraform1 init
+          terraform -chdir=setup/terraform1 fmt -no-color
+          terraform -chdir=setup/terraform1 validate -no-color
+          terraform -chdir=setup/terraform1 plan \
+          -var='secrets={ "password" = "'${{ secrets.MY_GITHUB_TOKEN }}'", "username" = "'${{ secrets.MY_GITHUB_USERNAME }}'", "name" = "'${{ env.SECRETS_NAME }}'" }' \
+          -var='repository-details={ "repo-name" = "'${{ env.REPOSITORY_NAME }}'", "repo-url" = "'${{ env.REPOSITORY_URL }}'" }' \
+          -var="s3-version=${{ env.S3_VERSION }}" \
+          -var="s3-storage=[\"${{ env.S3_DATABASE_STORAGE }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID }}\", \"${{ env.S3_DATALAKE_STORAGE }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID }}\", \"${{ env.S3_DATAWAREHOUSE_STORAGE }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID }}\"]"
+          echo "Infrastructure deployed successfully."

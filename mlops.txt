@@ -1,0 +1,50 @@
+MLOps Use Case
+--------------
+
+Hi Bright,
+
+Welcome to Quick Bank. My name is Ben your supervisor remember we had a quick discusion earlier on?
+
+Anyway this is a new ticket for you.
+
+1. Create a new repository for our data science team for a new project.
+
+	* repo name: loanapp
+
+2. Add the following data scientist to the repository
+
+	* Marvrog
+	* Manuel
+	* King
+	
+7. Setup a github project and add the following four(4) work items to it.
+
+	* Setup Infrastructure -- assign to your self
+	* Build model and deploy manually -- assign to Wonder 
+	* Automate Model building and deployment -- assign to Yourself
+	* Document the entire solution -- assign to your self
+	
+3. Create three(3) new branches with the following names from main
+
+	* setup
+	* dev
+	* stage
+	
+4. Create four(4) new environment with the following names
+
+	* setup
+	* dev
+	* stage
+	* prod where prod environment will be used with main branch to deploy production workloads
+
+5. Map each branch name with its environment. eg branch_name: dev ----Maps To----> environment: dev
+
+6. Setup a CI to validate pull request before merge request can be approved. If validation fails, merge request should not be approved.
+
+7. Collaborate with the data science team to come up with a robost pipeline to deploy the model into dev, stage and prod environment.
+
+8. Setup monitoring tools, logging for dev, stage and prod models.
+
+9. Document your entire solution with detailed architectural diagrams.
+
+Note: Use Infrastructure as Code as Much as Possible. If possible use IAC only unless otherwise.

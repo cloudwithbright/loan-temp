@@ -1,0 +1,7 @@
+users/*/data/*/*.csv
+setup/terraform/.terraform.lock.hcl
+setup/terraform/.terraform
+setup/terraform.tfstate.*
+setup/.terraform
+setup/terraform/.ipynb_checkpoints
+setup/terraform1/.ipynb_checkpoints
