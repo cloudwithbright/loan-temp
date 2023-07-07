@@ -13,9 +13,9 @@ Anyway this is a new ticket for you.
 
 2. Add the following data scientist to the repository
 
-	* Marvrog
-	* Manuel
-	* King
+	* Wonder ==> Github Username: Marvrog
+	* Manuel ==> Github Username: ekasiedu13
+	* Toni ==> Github Username:
 	
 7. Setup a github project and add the following four(4) work items to it.
 
