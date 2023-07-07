@@ -15,11 +15,11 @@ Anyway this is a new ticket for you.
 
 	* Wonder ==> Github Username: Marvrog
 	* Manuel ==> Github Username: ekasiedu13
-	* Toni ==> Github Username:
+	* Toni ==> Github Username: Anthony-Asamoah
 	
 7. Setup a github project and add the following four(4) work items to it.
 
-	* Setup Infrastructure -- assign to your self
+	* Setup Infrastructure -- assign to Yourself
 	* Build model and deploy manually -- assign to Wonder 
 	* Automate Model building and deployment -- assign to Yourself
 	* Document the entire solution -- assign to your self
