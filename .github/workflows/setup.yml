@@ -12,7 +12,7 @@ env:
     # Define environment variables
     ACTION: "none"
     S3_VERSION: "Enabled"
-    AWS_REGION: "us-east-2"
+    AWS_REGION: "us-east-1"
     S3_DATABASE_STORAGE: "database"
     S3_DATALAKE_STORAGE: "datalake"
     SECRETS_NAME: "sagemaker-secrets"
@@ -216,6 +216,7 @@ jobs:
             echo "Start Creating s3 bucket: ${{ env.TERRAFORM_BACKEND_S3_BUCKET_NAME }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID}}"
             aws s3api create-bucket \
             --bucket "${{ env.TERRAFORM_BACKEND_S3_BUCKET_NAME }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID}}"
+            
             # Enabling s3 version
             aws s3api put-bucket-versioning \
             --bucket "${{ env.TERRAFORM_BACKEND_S3_BUCKET_NAME }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID}}" \
