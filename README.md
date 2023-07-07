@@ -28,7 +28,7 @@ YOUR_AWS_ACCOUNT_ID
 
 * In .github/workflow/setup.yml file, line number 15, change the value of region to your region name
 ```bash
-AWS_REGION: "us-east-2" # Provide region or leave it as default.
+AWS_REGION: "us-east-1" # Provide region or leave it as default.
 ```
 
 * In .github/workflows/setup.yml file, line number 13, make sure the value of `ACTION='apply'`.
