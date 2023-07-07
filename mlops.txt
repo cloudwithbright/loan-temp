@@ -24,18 +24,19 @@ Anyway this is a new ticket for you.
 	* Automate Model building and deployment -- assign to Yourself
 	* Document the entire solution -- assign to your self
 	
-3. Create three(3) new branches with the following names from main
+3. Create four(4) new branches with the following names from main
 
 	* setup
 	* dev
 	* stage
+	* prod
 	
 4. Create four(4) new environment with the following names
 
 	* setup
 	* dev
 	* stage
-	* main (deploy to production environment)
+	* prod
 
 5. Map each branch name with its environment. eg branch_name: dev ----Maps To----> environment: dev
 
