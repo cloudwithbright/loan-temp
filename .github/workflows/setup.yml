@@ -20,7 +20,7 @@ env:
     REPOSITORY_NAME: "${{ github.event.repository.name }}"
     TERRAFORM_BACKEND_S3_BUCKET_NAME: "mlproject-terraform"
     REPOSITORY_URL: "https://github.com/${{ github.repository }}"
-    AUTH_GITHUBACTION_WITH_AWS_IAM_ROLE_NAME: github-action-workflow
+    AUTH_GITHUBACTION_WITH_AWS_IAM_ROLE_NAME: "github-action-workflow"
     TERRAFORM_BACKEND_STATE_FILE_LOCK_DYANAMODB_TABLE: "terraform-state-lock-dynamodb"
 
 permissions:
@@ -170,7 +170,7 @@ jobs:
             aws s3 rb s3://"${{ env.TERRAFORM_BACKEND_S3_BUCKET_NAME }}-${{ env.AWS_REGION }}-${{ secrets.YOUR_AWS_ACCOUNT_ID}}" --force
             echo "Finished Deleting s3 bucket"
           
-    pullRequest:
+    setupPR:
       if: github.event_name == 'pull_request' && github.base_ref == 'setup'
       runs-on: ubuntu-latest
       steps:
